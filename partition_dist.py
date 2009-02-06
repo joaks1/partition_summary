@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import sys
+import itertools
 from copy import copy
 _VERBOSE = False
 _DEBUGGING = False
@@ -72,7 +73,7 @@ def write_mb_partitions(out, sampled_partions, n_sites):
 class Vertex(object):
     def __init__(self, index, label_weight, is_in_y=False):
         self.index = index
-        self.label_weight = weight
+        self.label_weight = label_weight
         self.is_in_y = is_in_y
         self.eq_graph_edges = set()
         self.matching_edge = None
@@ -80,7 +81,13 @@ class Vertex(object):
         if self.is_in_y:
             return [i.tail for i in self.eq_graph_edges]
         return [i.head for i in self.eq_graph_edges]
-    
+    def __str__(self):
+        return "%s%d:%d{%s%s}" % (self.is_in_y and "y" or "x", 
+                                self.index, 
+                                self.label_weight, 
+                                self.eq_graph_edges and "e" or "f",
+                                self.matching_edge and "*" or "")
+                                
 class Edge(object):
     def __init__(self, tail, head, in_eq_graph=True):
         self.tail = tail
@@ -90,8 +97,8 @@ class Edge(object):
             head.eq_graph_edges.add(self)
     def set_in_match(self, in_match=True):
         m = in_match and self or None
-        tail.matching_edge = m
-        head.matching_edge = m
+        self.tail.matching_edge = m
+        self.head.matching_edge = m
     def set_in_eq_graph(self, in_eq_graph):
         if in_eq_graph:
             self.tail.eq_graph_edges.add(self)
@@ -99,15 +106,27 @@ class Edge(object):
         else:
             self.tail.eq_graph_edges.remove(self)
             self.head.eq_graph_edges.remove(self)
+    def __str__(self):
+        return "%s ==> %s" % (str(self.tail), str(self.head))
 
 class EqualityGraph(object):
     def __init__(self, dim):
         self.edge_mat = []
-        for i in dim:
+        for i in range(dim):
             self.edge_mat.append([None]*dim)
         self.edge_to_coord = {}
 
-
+    def __str__(self):
+        s = []
+        for row in self.edge_mat:
+            rp = []
+            for cell in row:
+                if cell is None:
+                    rp.append("-")
+                else: 
+                    rp.append("+")
+            s.append(" ".join(rp))
+        return "\n%s\n" % "\n".join(s)
     def add(self, x, y):
         x_c, y_c = x.index, y.index
         em_row = self.edge_mat[x_c]
@@ -176,16 +195,15 @@ def get_neighboring_vertices(s):
     return n
 
 
-def update_equality_graph(eq_graph_edges, s, t, mat)
+def update_equality_graph(eq_graph, s, t, mat, x_vec, y_vec):
     # update the equality graph based on the new labelings
     #   only edges that contain the vertices in s and t need to be 
     #   checked.
     # add equality edges from s
     for x_el in s:
-        row = y_vec[x_el.index]
         x_w = x_el.label_weight
         weight_row = mat[x_el.index]
-        for y_el in row:
+        for y_el in y_vec:
             y_w = y_el.label_weight
             w = weight_row[y_el.index]
             if (x_w + y_w) == w:
@@ -268,10 +286,9 @@ def calc_max_assignment(mat):
         return score_from_matching(matching)
     # Add a free vertex to the set S
    
-    assert len(s) == 1
     # The set t is the empty set
     t = set()
-    all_y = set(range(dim))
+    all_y = set(y_vec)
     reset_s = True
     while len(matching) != dim:
         if reset_s:
@@ -280,26 +297,44 @@ def calc_max_assignment(mat):
                 if x.matching_edge is None:
                     s.add(x)
                     break
+            assert len(s) == 1
+        if _DEBUGGING:
+            sys.stdout.write("""
+main while loop:
+s = set([%s])
+t = set([%s])
+eq_graph = %s
+matching = %s
+x_vec = %s
+y_vec = %s
+""" % ( ", ".join([str(i) for i in s]),
+                    ", ".join([str(i) for i in t]),
+                    str(eq_graph),
+                    ", ".join(["%s -> %s" % (str(i.tail), str(i.head)) for i in matching]),
+                    ", ".join([str(i) for i in x_vec]),
+                    ", ".join([str(i) for i in y_vec]),
+                  ))
         reset_s = False
         neighborhood = get_neighboring_vertices(s)
         if neighborhood == t:
             update_labelings(all_y, t, s, mat)
-            update_equality_graph(eq_graph, s, t, mat)
+            update_equality_graph(eq_graph, s, t, mat, x_vec, y_vec)
         else:
             diff = neighborhood - t
-            y = diff[0]
+            y = diff.pop()
             if y.matching_edge is None:
                 # y is free
+                print s
                 assert len(s) == 1
                 u = s.pop()
                 eq_graph.augment_path(u, y, matching)
                 reset_s = True
             else:
-                t.add(u)
+                t.add(y)
                 s.add(y.matching_edge.tail)
-     return 
+    return score_from_matching(matching)
 
-def diagonal_assignment(mat)
+def diagonal_assignment(mat):
     print mat
     dim = len(mat)
     for row in mat:
