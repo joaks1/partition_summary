@@ -102,7 +102,7 @@ def partition_distance(x, y, n_sites):
         total += value
         print '(%d, %d) -> %d' % (row, column, value)
     print 'total cost: %d' % total
-    return total
+    return n_sites - total
 
 if __name__ == '__main__':
     from optparse import OptionParser
