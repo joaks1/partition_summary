@@ -95,8 +95,10 @@ class Edge(object):
         if in_eq_graph:
             tail.eq_graph_edges.add(self)
             head.eq_graph_edges.add(self)
+        self.in_match = False
     def set_in_match(self, in_match=True):
         m = in_match and self or None
+        self.in_match = in_match
         self.tail.matching_edge = m
         self.head.matching_edge = m
     def set_in_eq_graph(self, in_eq_graph):
@@ -123,10 +125,12 @@ class EqualityGraph(object):
             for cell in row:
                 if cell is None:
                     rp.append("-")
-                else: 
+                elif cell.in_match:
+                    rp.append("*")
+                else:
                     rp.append("+")
             s.append(" ".join(rp))
-        return "\n%s\n" % "\n".join(s)
+        return "\n\t%s" % "\n\t".join(s)
     def add(self, x, y):
         x_c, y_c = x.index, y.index
         em_row = self.edge_mat[x_c]
@@ -226,6 +230,7 @@ def update_equality_graph(eq_graph, s, t, mat, x_vec, y_vec):
 def update_labelings(all_y, t, s, mat):
     # update the labelings
     # first find the minimum alpha
+    print mat
     alpha = None
     not_t = all_y - t
     assert(len(not_t) > 0)
@@ -235,6 +240,8 @@ def update_labelings(all_y, t, s, mat):
         for y_el in not_t:
             y_w = y_el.label_weight
             e_w = row[y_el.index]
+            if _DEBUGGING:
+                sys.stdout.write("x=%d %d, y=%d %d, w=%d\n" % (x_el.index, x_w, y_el.index, y_w, e_w))
             el_alpha = x_w + y_w - e_w
             if alpha is None or alpha > el_alpha:
                 alpha = el_alpha
@@ -317,12 +324,16 @@ y_vec = %s
         reset_s = False
         neighborhood = get_neighboring_vertices(s)
         if neighborhood == t:
+            if _DEBUGGING:
+                sys.stdout.write("Updating labeling\n")
             update_labelings(all_y, t, s, mat)
             update_equality_graph(eq_graph, s, t, mat, x_vec, y_vec)
         else:
             diff = neighborhood - t
             y = diff.pop()
             if y.matching_edge is None:
+                if _DEBUGGING:
+                    sys.stdout.write("Augmenting match\n")
                 # y is free
                 print s
                 assert len(s) == 1
@@ -330,6 +341,8 @@ y_vec = %s
                 eq_graph.augment_path(u, y, matching)
                 reset_s = True
             else:
+                if _DEBUGGING:
+                    sys.stdout.write("Adding to alternating tree\n")
                 t.add(y)
                 s.add(y.matching_edge.tail)
     return score_from_matching(matching)
