@@ -25,7 +25,6 @@ def read_mb_partitions(sampled_partitions_file, from_row, to_row=None, read_rate
     line_iter = iter(sampled_partitions_file)
     header = line_iter.next()
     n_sites = parse_mb_header(header)
-    print n_sites
     for line_num, line in enumerate(line_iter):
         if from_row and from_row > line_num:
             continue
@@ -41,7 +40,8 @@ def read_mb_partitions(sampled_partitions_file, from_row, to_row=None, read_rate
             assert(len(assignments) == len(rates))
         else:
             rate = 1.0
-        sys.stderr.write("reading sample %d\n" % line_num)
+        if _VERBOSE:
+            sys.stderr.write("reading sample %d\n" % line_num)
         for index, el in enumerate(assignments):
             iel = int(el)
             while iel > len(list_of_sets):
@@ -88,11 +88,12 @@ def partition_distance(x, y, n_sites):
     n_to_add = dim - lx
     for i in xrange(n_to_add):
         mat.append([0] * dim)
-
+    
     cost_matrix = []
     for row in mat:
         cost_row = [sys.maxint - col for col in row]
         cost_matrix.append(cost_row)
+    
     from munkres import Munkres
     indexes = Munkres().compute(cost_matrix)
     
@@ -100,8 +101,8 @@ def partition_distance(x, y, n_sites):
     for row, column in indexes:
         value = mat[row][column]
         total += value
-        print '(%d, %d) -> %d' % (row, column, value)
-    print 'total cost: %d' % total
+    #    print '(%d, %d) -> %d' % (row, column, value)
+    #print 'total cost: %d' % total
     return n_sites - total
 
 if __name__ == '__main__':
@@ -123,16 +124,18 @@ if __name__ == '__main__':
         type="int",
         help="The index of the last row of sampled points to read (None by default)")
     (options, args) = parser.parse_args()
+    _VERBOSE = options.verbose
+    _DEBUGGING = options.debugging
     if not args:
         sys.exit("Expecting a file name for the MrBayes DPP-over rates samples")
     sampled_partitions_filename = args[0]
     sampled_partitions_file = open(sampled_partitions_filename, 'rU')
     sampled_partitions, n_sites = read_mb_partitions(sampled_partitions_file, options.from_index, options.to_index)
     sampled_partitions_file.close()
-    _VERBOSE = options.verbose
-    _DEBUGGING = options.debugging
-    if _VERBOSE:
+    if _DEBUGGING and _VERBOSE:
         write_mb_partitions(sys.stdout, sampled_partitions, n_sites)
+    if _VERBOSE:
+        sys.stderr.write("%d partitions read\n" % len(sampled_partitions))
     if len(args) > 1:
         test_partitions_filename = args[1]
         test_partitions_file = open(test_partitions_filename, 'rU')
@@ -143,5 +146,13 @@ if __name__ == '__main__':
         tp = test_partitions[0][1]
         d = [partition_distance(tp, i[1], n_sites) for i in sampled_partitions]
         sys.stdout.write("%s\n" % "\n".join([str(i) for i in d]))
-        
-        
+    else:
+        l = len(sampled_partitions)
+        lower_triangle = []
+        for n, i in enumerate(sampled_partitions):
+            if _VERBOSE:
+                sys.stderr.write("Calc distance matrix row %d\n" % n)
+            r = sampled_partitions[:n+1]
+            d = tuple(partition_distance(i[1], j[1], n_sites) for j in r)
+            sys.stdout.write("%s\n" % "\t".join([str(x) for x in d]))
+            lower_triangle.append(d)
