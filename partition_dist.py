@@ -1,20 +1,22 @@
 #!/usr/bin/env python
 import sys
+import random
 import itertools
 from copy import copy
 _VERBOSE = False
 _DEBUGGING = False
+_RNG = random.Random()
+
 def parse_mb_header(h):
     s = h.split()
     n = len(s)
     n_sites = (n - 2)//2
-    assert s[n_sites + 1] == "P[%d]" % n_sites
-    assert s[n_sites + 2] == "R[1]"
+    assert(s[n_sites + 1] == "P[%d]" % n_sites)
+    assert(s[n_sites + 2] == "R[1]")
     return n_sites
 
 def read_mb_partitions(sampled_partitions_file, from_row, to_row=None, read_rates=True):
-    """Returns a list of tuples of (name, list of sets) for each sampled
-    partition, where the name is the MCMC iteration in the MrBayes file.
+    """Returns a tuple of the list of partitions and the number of sites
     
     The format in the DPP output from MrBayes is 
     rep#\t#subsets\tsubset#\tsubset#\t....
@@ -28,12 +30,13 @@ def read_mb_partitions(sampled_partitions_file, from_row, to_row=None, read_rate
     for line_num, line in enumerate(line_iter):
         if from_row and from_row > line_num:
             continue
-        if to_row and to_row <= line_num:
+        if to_row and to_row < line_num:
             break
-        s = line.strip().split()
+        x = line.strip()
+        s = x.split()
         name = s.pop(0)
         num_elements = int(s.pop(0))
-        list_of_sets = []
+        list_of_subsets = []
         assignments = s[:n_sites]
         if read_rates:
             rates = s[n_sites:]
@@ -44,15 +47,15 @@ def read_mb_partitions(sampled_partitions_file, from_row, to_row=None, read_rate
             sys.stderr.write("reading sample %d\n" % line_num)
         for index, el in enumerate(assignments):
             iel = int(el)
-            while iel > len(list_of_sets):
+            while iel > len(list_of_subsets):
                 if read_rates:
                     rate = float(rates[index])
                 subset_info = (set(), rate)
-                list_of_sets.append(subset_info)
-            dest_set = list_of_sets[iel - 1][0]
-            dest_set.add(index)
-        assert len(list_of_sets) == num_elements
-        d.append((name,list_of_sets))
+                list_of_subsets.append(subset_info)
+            set_of_indices = list_of_subsets[iel - 1][0]
+            set_of_indices.add(index)
+        assert len(list_of_subsets) == num_elements
+        d.append((name, list_of_subsets))
     return d, n_sites
 
 def write_mb_partitions(out, sampled_partions, n_sites):
@@ -105,6 +108,25 @@ def partition_distance(x, y, n_sites):
     #print 'total cost: %d' % total
     return n_sites - total
 
+def permute_partition(partition_desc, n_sites):
+    global _RNG
+    site_to_subset_ind = [None] * n_sites
+    permuted = []
+    for ss_index, subset_rate_pair in enumerate(partition_desc):
+        permuted.append([set(), subset_rate_pair[1]])
+        subset = subset_rate_pair[0]
+        for col_index in subset:
+            assert(site_to_subset_ind[col_index] is None)
+            site_to_subset_ind[col_index] = ss_index
+
+    _RNG.shuffle(site_to_subset_ind)
+    
+    for index, iel in enumerate(site_to_subset_ind):
+        assert (iel is not None)
+        set_of_indices = permuted[iel][0]
+        set_of_indices.add(index)
+    return permuted
+
 if __name__ == '__main__':
     from optparse import OptionParser
     parser = OptionParser()
@@ -123,15 +145,26 @@ if __name__ == '__main__':
     parser.add_option("-t", "--to", dest="to_index", default=None, 
         type="int",
         help="The index of the last row of sampled points to read (None by default)")
+    parser.add_option("-m", "--median", dest="median", default=False, 
+        action="store_true",
+        help="Find the sampled partition that has the smallest distance to all of the others (the sample that is closest to being the median)")
+    parser.add_option("-r", "--random", dest="random", default=False, 
+        action="store_true",
+        help="Compare the dist from a specified partition  (the second first partition in the file that is the second arg) to the sampled partitions against the distance from the same specified partition to a random permutation of sampled partition")
     (options, args) = parser.parse_args()
+    
+    
     _VERBOSE = options.verbose
     _DEBUGGING = options.debugging
+    if options.seed > 0:
+        _RNG.seed(options.seed)
     if not args:
         sys.exit("Expecting a file name for the MrBayes DPP-over rates samples")
     sampled_partitions_filename = args[0]
     sampled_partitions_file = open(sampled_partitions_filename, 'rU')
     sampled_partitions, n_sites = read_mb_partitions(sampled_partitions_file, options.from_index, options.to_index)
     sampled_partitions_file.close()
+
     if _DEBUGGING and _VERBOSE:
         write_mb_partitions(sys.stdout, sampled_partitions, n_sites)
     if _VERBOSE:
@@ -144,8 +177,14 @@ if __name__ == '__main__':
         if test_n_sites != n_sites:
             sys.exit("The number of sites in the test partition must be identical to the number of sites in the sampled partitions from MrBayes")
         tp = test_partitions[0][1]
-        d = [partition_distance(tp, i[1], n_sites) for i in sampled_partitions]
-        sys.stdout.write("%s\n" % "\n".join([str(i) for i in d]))
+        for i in sampled_partitions:
+            real_dist = partition_distance(tp, i[1], n_sites)
+            if options.random:
+                permuted = permute_partition(i[1], n_sites)
+                rand_dist = partition_distance(tp, permuted, n_sites)
+                print "%d\t%d" % (real_dist, rand_dist)
+            else:
+                print real_dist
     else:
         l = len(sampled_partitions)
         lower_triangle = []
@@ -156,3 +195,19 @@ if __name__ == '__main__':
             d = tuple(partition_distance(i[1], j[1], n_sites) for j in r)
             sys.stdout.write("%s\n" % "\t".join([str(x) for x in d]))
             lower_triangle.append(d)
+        if options.median:
+            print lower_triangle
+            dim = len(lower_triangle)
+            sum_dist = [0]*dim
+            for i in xrange(dim):
+                for j in xrange(i):
+                    row = lower_triangle[i]
+                    element = row[j]
+                    sum_dist[i] += element
+                    sum_dist[j] += element
+            min_dist = min(sum_dist)
+            print "samples that are medianish (sum of partition dist of %d)" % min_dist
+            for n, el in enumerate(sum_dist):
+                if el == min_dist:
+                    print sampled_partitions[n][0]
+            
