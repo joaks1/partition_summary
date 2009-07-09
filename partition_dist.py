@@ -177,14 +177,34 @@ if __name__ == '__main__':
         if test_n_sites != n_sites:
             sys.exit("The number of sites in the test partition must be identical to the number of sites in the sampled partitions from MrBayes")
         tp = test_partitions[0][1]
+        real_tally = 0
+        rand_tally = 0
+        tie_tally = 0
+        total_tally = 0
         for i in sampled_partitions:
             real_dist = partition_distance(tp, i[1], n_sites)
             if options.random:
                 permuted = permute_partition(i[1], n_sites)
                 rand_dist = partition_distance(tp, permuted, n_sites)
+                if real_dist < rand_dist:
+                    real_tally = real_tally + 1
+                elif real_dist > rand_dist:
+                    rand_tally = rand_tally + 1
+                elif real_dist == rand_dist:
+                    tie_tally = tie_tally + 1
+                total_tally = total_tally + 1
                 print "%d\t%d" % (real_dist, rand_dist)
             else:
                 print real_dist
+        if options.random:
+            assert(real_tally + rand_tally + tie_tally == total_tally == len(sampled_partitions))
+            prob = float(real_tally)/float(total_tally)
+            print "\nNumber of sampled 'wins':  %d" % real_tally
+            print "Number of permuted 'wins':  %d" % rand_tally
+            print "Number of ties:  %d" % tie_tally
+            print "TOTAL:  %d" % total_tally
+            print "Probability that the DPP sampled partitions are closer to a priori partition than random:"
+            print prob
     else:
         l = len(sampled_partitions)
         lower_triangle = []
@@ -193,10 +213,12 @@ if __name__ == '__main__':
                 sys.stderr.write("Calc distance matrix row %d\n" % n)
             r = sampled_partitions[:n+1]
             d = tuple(partition_distance(i[1], j[1], n_sites) for j in r)
-            sys.stdout.write("%s\n" % "\t".join([str(x) for x in d]))
+            if _VERBOSE:
+                sys.stdout.write("%s\n" % "\t".join([str(x) for x in d]))
             lower_triangle.append(d)
         if options.median:
-            print lower_triangle
+            if _VERBOSE:
+                print lower_triangle
             dim = len(lower_triangle)
             sum_dist = [0]*dim
             for i in xrange(dim):
@@ -206,8 +228,19 @@ if __name__ == '__main__':
                     sum_dist[i] += element
                     sum_dist[j] += element
             min_dist = min(sum_dist)
-            print "samples that are medianish (sum of partition dist of %d)" % min_dist
+            print "samples that are medianish (sum of partition dist of %d):" % min_dist
             for n, el in enumerate(sum_dist):
                 if el == min_dist:
                     print sampled_partitions[n][0]
-            
+                    print "\nCharset definitions for %s:\n" % sampled_partitions[n][0]
+                    for i in xrange(len(sampled_partitions[n][1])):
+                        sys.stdout.write("charset ratepart%d =" % (i+1))
+                        for site in sampled_partitions[n][1][i][0]:
+                            sys.stdout.write(" %d" % (site+1))
+                        sys.stdout.write(";\n")
+                    print "\nRates for partition %s:"% sampled_partitions[n][0]
+                    for i in xrange(len(sampled_partitions[n][1])):
+                        print "ratepart%d = %f" % ((i+1), sampled_partitions[n][1][i][1])
+                    print "\n"
+                             
+                        
