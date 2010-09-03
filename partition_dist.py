@@ -69,7 +69,9 @@ class Subset(object):
 
 class Partition(object):
     "object with a list of Subset objects, a string id, and float likelihood"
+    count = 0
     def __init__(self, list_of_subset_objects = [], id = None, lnL = None):
+        self.__class__.count += 1
         assert isinstance(list_of_subset_objects, list)
         self._subsets = []
         self._number_of_subsets = len(self._subsets)
@@ -79,7 +81,7 @@ class Partition(object):
         if id is not None:
             self._id = str(id)
         else:
-            self._id = id
+            self._id = 'partition' + str(self.count)
         if lnL is not None:
             try:
                 self._lnL = float(lnL)
@@ -88,6 +90,7 @@ class Partition(object):
                 raise
         else:
             self._lnL = lnL
+        self._length_update_needed = 0
         
     def __str__(self):
         if self._id is not None:
@@ -127,13 +130,16 @@ class Partition(object):
     
     def _get_number_of_subsets(self):
         return self._number_of_subsets
-    number_of_subets = property(_get_number_of_subsets)
+    number_of_subsets = property(_get_number_of_subsets)
     
     def _get_subsets(self):
+        self._length_update_needed = 1
         return self._subsets
     subsets = property(_get_subsets)
     
     def _get_length(self):
+        if self._length_update_needed == 1:
+            self._update_length()
         return self._length
     length = property(_get_length)
     
@@ -142,7 +148,40 @@ class Partition(object):
         self._subsets.append(subset_object)
         self._number_of_subsets += 1
         self._length += subset_object.size
+    
+    def _update_length(self):
+        self._length = 0
+        for ss in self.subsets:
+            self._length += ss.size
+        self._length_update_needed = 0
+    
+    def distance(self, other):
+        assert self.length == other.length, "\nPartitions must have same number of sites to calculate distance.\nYou tried '%s' (%d) vs. '%s' (%d)\n" % (self.id, self.length, other.id, other.length)
+        mat = []
+        dim = max(self.number_of_subsets, other.number_of_subsets)
+        for xsubset in self.subsets:
+            row = [0] * dim
+            for i, ysubset in enumerate(other.subsets):
+                intersection = xsubset.indices & ysubset.indices
+                row[i] = len(intersection)
+            mat.append(row)
+        n_to_add = dim - self.number_of_subsets
+        for i in xrange(n_to_add):
+            mat.append([0] * dim)
         
+        cost_matrix = []
+        for row in mat:
+            cost_row = [sys.maxint - col for col in row]
+            cost_matrix.append(cost_row)
+        
+        from munkres import Munkres
+        indexes = Munkres().compute(cost_matrix)
+        
+        total = 0
+        for row, column in indexes:
+            value = mat[row][column]
+            total += value
+        return self.length - total
         
 class PosteriorOfPartitions(object):
     "object with a list of Partition objects and a string id"
