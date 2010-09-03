@@ -3,10 +3,180 @@ import sys
 import random
 import itertools
 from copy import copy
+import logging
+from dendropy.utility.messaging import get_logger
+_LOG = get_logger('partition_dist')
+
 _VERBOSE = False
 _DEBUGGING = False
 _RNG = random.Random()
 
+class Subset(object):
+    "object with a set of site indices (ints) and a corresponding relative rate (float), and string id"
+    
+    def __init__(self, set_of_site_indices = set(), rate = None, id = None):
+        assert isinstance(set_of_site_indices, set)
+        self._site_indices = set()
+        self._number_of_sites = len(self._site_indices)
+        for i in set_of_site_indices:
+            self.add_index(i)
+        if rate is None:
+            self._rate = rate
+        else:
+            self.rate = rate
+        if id is not None:
+            self._id = str(id)
+        else:
+            self._id = id
+
+    def __str__(self):
+        s = "sites = %s\nrate = %s"  % (" ".join([str(x) for x in self._site_indices]), str(self.rate))
+        return s
+
+    def _get_rate(self):
+        return self._rate
+    def _set_rate(self, float_rate):
+        try:
+            self._rate = float(float_rate)
+        except ValueError, e:
+            sys.stderr.write("Invalid value specified for rate attribute of Subset object: %s" % str(float_rate))
+            raise
+    rate = property(_get_rate, _set_rate)
+        
+    def _get_id(self):
+        return self._id
+    def _set_id(self, str_name):
+        self._id = str(str_name)
+    id = property(_get_id, _set_id)
+    
+    def _get_indices(self):
+        return self._site_indices
+    indices = property(_get_indices)
+
+    def get_indices_str(self):
+        s = " ".join([str(x) for x in self._site_indices])
+        return s
+        
+    def _get_number_of_sites(self):
+        return self._number_of_sites
+    size = property(_get_number_of_sites)
+
+    def add_index(self, int_site_index):
+        assert isinstance(int_site_index, int), "Site indices of Subset object must be ints, you specifed: %s -- %s" % (str(int_site_index), type(int_site_index))    
+        self._site_indices.add(int_site_index)
+        self._number_of_sites += 1
+        
+
+class Partition(object):
+    "object with a list of Subset objects, a string id, and float likelihood"
+    def __init__(self, list_of_subset_objects = [], id = None, lnL = None):
+        assert isinstance(list_of_subset_objects, list)
+        self._subsets = []
+        self._number_of_subsets = len(self._subsets)
+        self._length = 0
+        for ss in list_of_subset_objects:
+            self.add_subset(ss)
+        if id is not None:
+            self._id = str(id)
+        else:
+            self._id = id
+        if lnL is not None:
+            try:
+                self._lnL = float(lnL)
+            except ValueError, e:
+                sys.stderr.write("Invalid value specified for lnL attribute of Partition object: %s" % str(lnL))
+                raise
+        else:
+            self._lnL = lnL
+        
+    def __str__(self):
+        if self._id is not None:
+            s = "begin sets;\n\t[partition %s]\n" % self._id
+            paup_definition = "charpartition %s = " % self._id
+            mb_definition = "partition %s = %d: " % (self._id, self._number_of_subsets)
+        else:
+            s = "begin sets;\n\t[partition p%d]\n" % self._number_of_subsets
+            paup_definition = "charpartition p%d =" % self._number_of_subsets
+            mb_definition = "partition p%d = %d:" % (self._number_of_subsets, self._number_of_subsets)
+        for i, subset in enumerate(self._subsets):
+            if subset._get_id() is not None:
+                s = s + "\tcharset %s" % subset._get_id()
+                s = s + " [rate = %s] = %s;\n" % (str(subset.rate), subset.get_indices_str())
+                paup_definition = paup_definition + " %s:%s," % (subset._get_id(), subset._get_id())
+                mb_definition = mb_definition + " %s," % subset._get_id()
+            else:
+                s = s + "\tcharset subset%d" % (i+1)
+                s = s + " [rate = %s] = %s;\n" % (str(subset.rate), subset.get_indices_str())
+                paup_definition = paup_definition + " subset%d:subset%d," % (i+1, i+1)
+                mb_definition = mb_definition + " subset%d," % (i+1)
+        paup_definition = paup_definition.rstrip(',') + ";"
+        mb_definition = mb_definition.rstrip(',') + ";"
+        s = s + "\t%s\n\t%s\nend;" % (paup_definition, mb_definition)
+        return s
+    
+    def _get_id(self):
+        return self._id
+    def _set_id(self, str_name):
+        self._id = str(str_name)
+    id = property(_get_id, _set_id)
+    
+    def _get_lnL(self):
+        return self._lnL
+        
+    lnL = property(_get_lnL)
+    
+    def _get_number_of_subsets(self):
+        return self._number_of_subsets
+    number_of_subets = property(_get_number_of_subsets)
+    
+    def _get_subsets(self):
+        return self._subsets
+    subsets = property(_get_subsets)
+    
+    def _get_length(self):
+        return self._length
+    length = property(_get_length)
+    
+    def add_subset(self, subset_object):
+        assert isinstance(subset_object, Subset)
+        self._subsets.append(subset_object)
+        self._number_of_subsets += 1
+        self._length += subset_object.size
+        
+        
+class PosteriorOfPartitions(object):
+    "object with a list of Partition objects and a string id"
+    def __init__(self, list_of_partition_objects = [], id = None):
+        assert isinstance(list_of_partition_objects, list)
+        self._partitions = []
+        self._number_of_partitions = len(self._partitions)
+        for p in list_of_partition_objects:
+            self.add_partition(p)
+        if id is not None:
+            self._id = str(id)
+        else:
+            self._id = id
+    
+    def _get_id(self):
+        return self._id
+    
+    def _set_id(self, str_name):
+        self._id = str(str_name)
+    id = property(_get_id, _set_id)
+    
+    def _get_partitions(self):
+        return self._partitions
+    partitions = property(_get_partitions)
+    
+    def _get_number_of_partitions(self):
+        return self._number_of_partitions
+    number_of_partitions = property(_get_number_of_partitions)
+    
+    def add_partition(self, partition_object):
+        assert isinstance(partition_object, Partition)
+        self._partitions.append(partition_object)
+        self._number_of_partitions += 1
+    
 def parse_mb_header(h):
     s = h.split()
     n = len(s)
