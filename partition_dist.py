@@ -54,7 +54,7 @@ class Subset(object):
     indices = property(_get_indices)
 
     def get_indices_str(self):
-        s = " ".join([str(x) for x in self._site_indices])
+        s = " ".join([str(x+1) for x in self._site_indices])
         return s
         
     def _get_number_of_sites(self):
@@ -91,6 +91,7 @@ class Partition(object):
         else:
             self._lnL = lnL
         self._length_update_needed = 0
+        self._number_of_permutations = 0
         
     def __str__(self):
         if self._id is not None:
@@ -182,6 +183,27 @@ class Partition(object):
             value = mat[row][column]
             total += value
         return self.length - total
+    
+    def get_site_to_subset_indices(self):
+        site_to_subset_indices = [None] * self.length
+        for ss_index, subset in enumerate(self.subsets):
+            for site_index in subset.indices:
+                assert (site_to_subset_indices[site_index] is None)
+                site_to_subset_indices[site_index] = ss_index
+        return site_to_subset_indices
+        
+    def permuted_copy(self):
+        self._number_of_permutations += 1
+        permuted = Partition([], id = "%s_permuted%d" % (self.id, self._number_of_permutations))
+        for n, subset in enumerate(self.subsets):
+            permuted.add_subset(Subset(set(), rate=subset.rate, id=subset.id))
+        global _RNG
+        site_to_subset_indices = self.get_site_to_subset_indices()
+        _RNG.shuffle(site_to_subset_indices)
+        for i, site_to_subset_index in enumerate(site_to_subset_indices):
+            assert (site_to_subset_index is not None)
+            permuted.subsets[site_to_subset_index].add_index(i)
+        return permuted
         
 class PosteriorOfPartitions(object):
     "object with a list of Partition objects and a string id"
@@ -325,7 +347,7 @@ def permute_partition(partition_desc, n_sites):
         permuted.append([set(), subset_rate_pair[1]])
         subset = subset_rate_pair[0]
         for col_index in subset:
-            assert(site_to_subset_ind[col_index] is None)
+            assert (site_to_subset_ind[col_index] is None)
             site_to_subset_ind[col_index] = ss_index
 
     _RNG.shuffle(site_to_subset_ind)
