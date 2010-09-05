@@ -238,6 +238,32 @@ class PosteriorOfPartitions(object):
         self._partitions.append(partition_object)
         self._number_of_partitions += 1
     
+    def distance_matrix(self):
+        lower_triangle = []
+        for n, partition in enumerate(self.partitions):
+            _LOG.debug("Calc distance matrix row %d\n" % n)
+            row = self.partitions[:n+1]
+            distances = tuple(partition.distance(j) for j in row)
+            _LOG.debug("%s\n" % "\t".join([str(x) for x in distances]))
+            lower_triangle.append(distances)
+        return lower_triangle
+    
+    def median_partition(self):
+        dist_mat = self.distance_matrix()
+        dim = len(dist_mat)
+        sum_dist = [0]*dim
+        for i in xrange(dim):
+            for j in xrange(i):
+                row = dist_mat[i]
+                element = row[j]
+                sum_dist[i] += element
+                sum_dist[j] += element
+        min_dist = min(sum_dist)
+        for n, dist in enumerate(sum_dist):
+            if dist == min_dist:
+                median_part = self.partitions[n]
+        return median_part, min_dist
+    
 def parse_mb_header(h):
     s = h.split()
     n = len(s)
