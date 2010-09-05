@@ -264,6 +264,33 @@ class PosteriorOfPartitions(object):
                 median_part = self.partitions[n]
         return median_part, min_dist
     
+    def probability_closer_than_random(self, partition_object):
+        sampled_closer = 0
+        permuted_closer = 0
+        tie = 0
+        sys.stdout.write("sampled\tpermuted\n")
+        for p in self.partitions:
+            sampled_dist = partition_object.distance(p)
+            permuted_dist = partition_object.distance(p.permuted_copy())
+            sys.stdout.write("%d\t%d\n" % (sampled_dist, permuted_dist))
+            if sampled_dist < permuted_dist:
+                sampled_closer += 1
+            elif sampled_dist > permuted_dist:
+                permuted_closer += 1
+            elif sampled_dist == permuted_dist:
+                tie += 1
+            else:
+                sys.exit("There was a problem calculating the probability that posterior '%s' is closer to partition '%s' than expected by chance." % (self.id, partition_object.id))
+        assert(sampled_closer + permuted_closer + tie == self.number_of_partitions)
+        prob = float(sampled_closer) / float(self.number_of_partitions)
+        sys.stdout.write("\n#######################################################\n")
+        sys.stdout.write("number of times sampled was closer: %d\n" % sampled_closer)
+        sys.stdout.write("number of times permuted was closer: %d\n" % permuted_closer)
+        sys.stdout.write("number of ties: %d\n" % tie)
+        sys.stdout.write("probability the posterior of partitions is closer to\ntested partition than by chance:\n")
+        sys.stdout.write("%f\n" % prob)
+        return prob
+    
 def parse_mb_header(h):
     s = h.split()
     n = len(s)
@@ -300,8 +327,7 @@ def read_mb_partitions(sampled_partitions_file, from_row, to_row=None, read_rate
             assert(len(assignments) == len(rates))
         else:
             rate = 1.0
-        if _VERBOSE:
-            sys.stderr.write("reading sample %d\n" % line_num)
+        _LOG.debug("reading sample %d\n" % line_num)
         for index, el in enumerate(assignments):
             iel = int(el)
             while iel > len(list_of_subsets):
