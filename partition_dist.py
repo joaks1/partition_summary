@@ -435,7 +435,8 @@ if __name__ == '__main__':
         action="store_true",
         help="Compare the dist from a specified partition  (the second first partition in the file that is the second arg) to the sampled partitions against the distance from the same specified partition to a random permutation of sampled partition")
     (options, args) = parser.parse_args()
-    
+    if options.verbose:
+        _LOG.setLevel(logging.DEBUG)    
     
     _VERBOSE = options.verbose
     _DEBUGGING = options.debugging
@@ -447,6 +448,15 @@ if __name__ == '__main__':
     sampled_partitions_file = open(sampled_partitions_filename, 'rU')
     sampled_partitions, n_sites = read_mb_partitions(sampled_partitions_file, options.from_index, options.to_index)
     sampled_partitions_file.close()
+    
+    post = PosteriorOfPartitions()
+    for i, p in enumerate(sampled_partitions):
+        part = Partition([], id=p[0])
+        for j, ss in enumerate(p[1]):
+            subset = Subset(ss[0], rate=ss[1])
+            part.add_subset(subset)
+        post.add_partition(part)
+            
 
     if _DEBUGGING and _VERBOSE:
         write_mb_partitions(sys.stdout, sampled_partitions, n_sites)
@@ -460,6 +470,12 @@ if __name__ == '__main__':
         if test_n_sites != n_sites:
             sys.exit("The number of sites in the test partition must be identical to the number of sites in the sampled partitions from MrBayes")
         tp = test_partitions[0][1]
+        
+        testp = Partition()
+        for s in tp:
+            ss = Subset(s[0], rate = s[1])
+            testp.add_subset(ss)
+        
         real_tally = 0
         rand_tally = 0
         tie_tally = 0
@@ -488,6 +504,9 @@ if __name__ == '__main__':
             print "TOTAL:  %d" % total_tally
             print "Probability that the DPP sampled partitions are closer to a priori partition than random:"
             print prob
+        
+        post.probability_closer_than_random(testp)
+        
     else:
         l = len(sampled_partitions)
         lower_triangle = []
@@ -525,5 +544,8 @@ if __name__ == '__main__':
                     for i in xrange(len(sampled_partitions[n][1])):
                         print "ratepart%d = %f" % ((i+1), sampled_partitions[n][1][i][1])
                     print "\n"
+                    
+            med, md = post.median_partition()
+            sys.stdout.write("\n%s\n%d\n" % (str(med), md))
                              
                         
