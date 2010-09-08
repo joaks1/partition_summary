@@ -3,6 +3,7 @@ import sys
 import re
 import random
 import itertools
+import time
 from copy import copy
 
 import logging
@@ -10,6 +11,7 @@ logging.basicConfig(level=logging.WARNING)
 _LOG = logging.getLogger('partition_dist')
 
 _RNG = random.Random()
+_SEED = int(time.time())
 
 class Subset(object):
     "object with a set of site indices (ints) and a corresponding relative rate (float), and string id"
@@ -214,7 +216,36 @@ class Partition(object):
             assert (site_to_subset_index is not None)
             permuted.subsets[site_to_subset_index].add_index(i)
         return permuted
+    
+    def valid(self):
+        list_all_indices = []
+        for subset in self.subsets:
+            for i in subset.indices:
+                list_all_indices.append(i)
+        true_indices = range(0, (max(list_all_indices) + 1))
+        duplicates = set()
+        missing = set()
+        for i in true_indices:
+            n = list_all_indices.count(i)
+            if n > 1:
+                duplicates.add(i)
+            if n < 1:
+                missing.add(i)
+        if (len(missing) != 0) or (len(duplicates) != 0):
+            raise ValidPartitionException(self.id, missing, duplicates)
+            return False
+        else:
+            return True
         
+class ValidPartitionException(Exception):
+    def __init__(self, partition_id, missing_indices=set(), duplicate_indices=set(), msg=""):
+        self.partition_id = partition_id
+        self.missing_sites = [(x+1) for x in missing_indices]
+        self.duplicate_sites = [(x+1) for x in duplicate_indices]
+        self.msg = msg
+    def __str__(self):
+        return "Partition '%s' is invalid.\nMissing sites:\n%s\nDuplicated sites:\n%s\n%s\n" % (self.partition_id, " ".join([str(x) for x in self.missing_sites]), " ".join([str(x) for x in self.duplicate_sites]), self.msg)
+
 class PosteriorOfPartitions(object):
     "object with a list of Partition objects and a string id"
     def __init__(self, list_of_partition_objects = [], id = None):
@@ -280,9 +311,11 @@ class PosteriorOfPartitions(object):
         return median_part, min_dist
     
     def probability_closer_than_random(self, partition_object):
+        global _SEED
         sampled_closer = 0
         permuted_closer = 0
         tie = 0
+        sys.stdout.write("seed = %d\n" % _SEED)
         sys.stdout.write("sampled\tpermuted\n")
         for p in self.partitions:
             sampled_dist = partition_object.distance(p)
@@ -324,12 +357,15 @@ def read_partitions(sampled_partitions_file, from_row=0, to_row=None, read_rates
     pb_pattern = re.compile(pb_regex)
     mb_regex = r'^n\tDegree\tP\[1\]'
     mb_pattern = re.compile(mb_regex)
+    nex_regex = r'^#NEXUS'
+    nex_pattern = re.compile(nex_regex, re.IGNORECASE)
     
     line_iter = iter(sampled_partitions_file)
     first_line = line_iter.next().strip()
     sampled_partitions_file.seek(0)
     pb_match = pb_pattern.search(first_line)
     mb_match = mb_pattern.search(first_line)
+    nex_match = nex_pattern.search(first_line)
     if pb_match:
         version, subversion, beta = pb_match.groups()
         _LOG.info("Reading partitions from output of PhyloBayes %s.%s.%s...\n" % (version, subversion, beta))
@@ -337,10 +373,46 @@ def read_partitions(sampled_partitions_file, from_row=0, to_row=None, read_rates
     elif mb_match:
         _LOG.info("Reading partitions from output of John Huelsenbeck's DPP model program...\n")
         partitions = read_mb_partitions(sampled_partitions_file, from_row, to_row, read_rates)
+    elif nex_match:
+        _LOG.info("Reading partition from NEXUS file '%s'...\n" % sampled_partitions_file.name)
+        partitions = read_nex_partition(sampled_partitions_file)
     else:
         sys.exit("Sorry, could not recognize format of partitions file!\n")
     return partitions
-    
+
+def read_nex_partition(nex_file):
+    charset_pattern = re.compile(r'^\s*charset\s+(\S+)\s+=(.+);\s*$', re.IGNORECASE)
+    n1 = re.compile(r'^\d+$')
+    n2 = re.compile(r'^\d+-\d+$')
+    n3 = re.compile(r'^\d+-\d+\\3$')
+    line_iter = iter(nex_file)
+    partition = Partition(id = nex_file.name)
+    for line_num, line in enumerate(line_iter):
+        x = line.strip()
+        for name, indices in charset_pattern.findall(x):
+            subset = Subset(set(), id = name.strip())
+            site_indices = indices.strip().split()
+            for i in site_indices:
+                i.strip()
+                if n1.match(i):
+                    subset.add_index(int(i)-1)
+                elif n2.match(i):
+                    i = i.split('-')
+                    i = range(int(i[0]), int(i[1])+1)
+                    for n in i:
+                        subset.add_index(n-1)
+                elif n3.match(i):
+                    i = i.replace('\\3', '')
+                    i = i.split('-')
+                    i = range(int(i[0]), int(i[1])+1, 3)
+                    for n in i:
+                        subset.add_index(n-1)
+                else:
+                    sys.exit("Could not parse charset '%s' from file '%s'. Found '%s' in charset definition.\n" % (name, nex_file.name, i))
+            partition.add_subset(subset)
+    partitions = PosteriorOfPartitions([partition])
+    return partitions
+
 def read_pb_partitions(sampled_partitions_file, from_row=0, to_row=None, read_rates=True):
     site_indices_regex = r'^\d+\t\d+\t\d+\t\d+\t\d+\t\d+\t\d+\t\d+\t\d+\t\d+'
     site_indices_pattern = re.compile(site_indices_regex)
@@ -457,25 +529,26 @@ if __name__ == '__main__':
         help="Run in debugging mode")
     parser.add_option("-f", "--from", dest="from_index", default=0, 
         type="int",
-        help="The index of the first row of sampled points to read (0 by default)")
+        help="The index of the first sampled partition to read (0 by default)")
     parser.add_option("-t", "--to", dest="to_index", default=None, 
         type="int",
-        help="The index of the last row of sampled points to read (None by default)")
+        help="The index of the last sampled partition to read (None by default)")
     parser.add_option("-m", "--median", dest="median", default=False, 
         action="store_true",
         help="Find the sampled partition that has the smallest distance to all of the others (the sample that is closest to being the median)")
     parser.add_option("--target", dest="target",
         action="store",
         type="string",
-        help="Partitions file. The first partition in this file will be used to calculate the probability that the sampled partitions are closer to this target partition than expected by chance")
+        help="The partitions file from which the first partition will be used to calculate the probability that the sampled partitions are closer to this target partition than expected by chance. This can be in the same format as the partitions output by PhyloBayes or John Huelsenbeck's DPP program, or can also be a NEXUS file with the partition defined with 'charset' statements (do NOT put comments in lines with charset statements).")
     (options, args) = parser.parse_args()
     
     if options.verbose:
         _LOG.setLevel(logging.INFO)
     if options.debugging:
         _LOG.setLevel(logging.DEBUG)
-    if options.seed > 0:
-        _RNG.seed(options.seed)
+    if options.seed != 0:
+        _SEED = options.seed
+    _RNG.seed(_SEED)
     if not args:
         sys.exit("Expecting a file name for the MrBayes DPP-over rates samples")
 
@@ -498,11 +571,15 @@ if __name__ == '__main__':
     if options.target:
         test_partitions_filename = options.target
         test_partitions_file = open(test_partitions_filename, 'rU')
-        test_partitions = read_mb_partitions(test_partitions_file, 0, 1, read_rates=False)
+        test_partitions = read_partitions(test_partitions_file, 0, 1, read_rates=False)
         test_partitions_file.close()
         if test_partitions.partitions[0].length != sampled_partitions.partitions[0].length:
             sys.exit("The number of sites in the test partition must be identical to the number of sites in the sampled partitions from MrBayes")
         tp = test_partitions.partitions[0]
+        try:
+            tp.valid()
+        except ValidPartitionException as e:
+            sys.exit("Target partition '%s' from file '%s' is not valid:\n%s\n" % (tp.id, options.target, e))
         sampled_partitions.probability_closer_than_random(tp)
         
     if options.median:
