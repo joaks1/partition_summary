@@ -426,8 +426,11 @@ def read_pb_partitions(sampled_partitions_file, from_row=0, to_row=None, read_ra
         indices_match = site_indices_pattern.search(x)
         if indices_match:
             indices_tally += 1
-        if indices_tally == 2:
-            indices_tally = 0
+        else:
+            continue
+        if indices_tally == 1:
+            continue
+        elif indices_tally == 2:
             sample_tally += 1
             if from_row and from_row > sample_tally-1:
                 _LOG.info("ignoring sample %d from '%s'\n" % (sample_tally-1, sampled_partitions_file.name))
@@ -460,6 +463,12 @@ def read_pb_partitions(sampled_partitions_file, from_row=0, to_row=None, read_ra
                     assert partition.subsets[iel].rate == float(rates[iel])
             assert partition.number_of_subsets == len(rates) == number_of_subsets
             posterior.add_partition(partition)
+            indices_tally = 0
+        elif indices_tally == 3:
+            indices_tally = 0
+            continue
+        else:
+            sys.exit("Problem parsing PhyloBayes output file '%s'\nUnexpected pattern of site indices found at line number '%d'\nThe tally of encountered index lines was '%d'\n" % (sampled_partitions_file.name, line_num, indices_tally))
     return posterior
             
             
