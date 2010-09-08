@@ -443,7 +443,7 @@ def read_pb_partitions(sampled_partitions_file, from_row=0, to_row=None, read_ra
                 number_of_subsets = int(line_iter.next().strip())
             else:
                 number_of_subsets = int(next_line)
-            partition = Partition([], id=str(sample_tally))
+            partition = Partition([], id = "%s_%s" % (sampled_partitions_file.name, str(sample_tally)))
             rates = []
             for i in xrange(number_of_subsets):
                 r = line_iter.next().strip().split()
@@ -502,7 +502,7 @@ def read_mb_partitions(sampled_partitions_file, from_row=0, to_row=None, read_ra
         s = x.split()
         name = s.pop(0)
         num_elements = int(s.pop(0))
-        partition = Partition([], id = name)
+        partition = Partition([], id = "%s_%s" % (sampled_partitions_file.name, name))
         assignments = s[:n_sites]
         assignment_set = set(assignments)
         for i in xrange(len(assignment_set)):
