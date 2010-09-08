@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import sys
+import re
 import random
 import itertools
 from copy import copy
@@ -247,6 +248,11 @@ class PosteriorOfPartitions(object):
         self._partitions.append(partition_object)
         self._number_of_partitions += 1
     
+    def merge(self, other_posterior):
+        assert isinstance(other_posterior, PosteriorOfPartitions)
+        for p in other_posterior.partitions:
+            self.add_partition(p)
+    
     def distance_matrix(self):
         lower_triangle = []
         for n, partition in enumerate(self.partitions):
@@ -313,6 +319,78 @@ class PosteriorOfPartitions(object):
         return mb_parts
 
     
+def read_partitions(sampled_partitions_file, from_row=0, to_row=None, read_rates=True):
+    pb_regex = r'^(\d+)\t(\d+)\t(\d+)$'
+    pb_pattern = re.compile(pb_regex)
+    mb_regex = r'^n\tDegree\tP\[1\]'
+    mb_pattern = re.compile(mb_regex)
+    
+    line_iter = iter(sampled_partitions_file)
+    first_line = line_iter.next().strip()
+    sampled_partitions_file.seek(0)
+    pb_match = pb_pattern.search(first_line)
+    mb_match = mb_pattern.search(first_line)
+    if pb_match:
+        version, subversion, beta = pb_match.groups()
+        _LOG.info("Reading partitions from output of PhyloBayes %s.%s.%s...\n" % (version, subversion, beta))
+        partitions = read_pb_partitions(sampled_partitions_file, from_row, to_row, read_rates)
+    elif mb_match:
+        _LOG.info("Reading partitions from output of John Huelsenbeck's DPP model program...\n")
+        partitions = read_mb_partitions(sampled_partitions_file, from_row, to_row, read_rates)
+    else:
+        sys.exit("Sorry, could not recognize format of partitions file!\n")
+    return partitions
+    
+def read_pb_partitions(sampled_partitions_file, from_row=0, to_row=None, read_rates=True):
+    site_indices_regex = r'^\d+\t\d+\t\d+\t\d+\t\d+\t\d+\t\d+\t\d+\t\d+\t\d+'
+    site_indices_pattern = re.compile(site_indices_regex)
+    
+    posterior = PosteriorOfPartitions()
+    line_iter = iter(sampled_partitions_file)
+    indices_tally = 0
+    sample_tally = 0
+    for line_num, line in enumerate(line_iter):
+        x = line.strip()
+        indices_match = site_indices_pattern.search(x)
+        if indices_match:
+            indices_tally += 1
+        if indices_tally == 2:
+            indices_tally = 0
+            sample_tally += 1
+            if from_row and from_row > sample_tally-1:
+                _LOG.info("ignoring sample %d from '%s'\n" % (sample_tally-1, sampled_partitions_file.name))
+                continue
+            if to_row and to_row < sample_tally-1:
+                break
+            _LOG.info("reading sample %d from '%s'\n" % (sample_tally-1, sampled_partitions_file.name))
+            next_line = line_iter.next().strip()
+            if next_line == 'rates':
+                number_of_subsets = int(line_iter.next().strip())
+            else:
+                number_of_subsets = int(next_line)
+            partition = Partition([], id=str(sample_tally))
+            rates = []
+            for i in xrange(number_of_subsets):
+                r = line_iter.next().strip().split()
+                assert len(r) == 2
+                if read_rates:
+                    rate = float(r[0])
+                else:
+                    rate = 1.0
+                subset = Subset(set(), rate = rate)
+                rates.append(rate)
+                partition.add_subset(subset)
+            assignments = line_iter.next().strip().split()
+            for index, el in enumerate(assignments):
+                iel = int(el)
+                partition.subsets[iel].add_index(index)
+                if read_rates:
+                    assert partition.subsets[iel].rate == float(rates[iel])
+            assert partition.number_of_subsets == len(rates) == number_of_subsets
+            posterior.add_partition(partition)
+    return posterior
+            
+            
 def parse_mb_header(h):
     s = h.split()
     n = len(s)
@@ -321,8 +399,8 @@ def parse_mb_header(h):
     assert(s[n_sites + 2] == "R[1]")
     return n_sites
 
-def read_mb_partitions(sampled_partitions_file, from_row, to_row=None, read_rates=True):
-    """Returns a tuple of the list of partitions and the number of sites
+def read_mb_partitions(sampled_partitions_file, from_row=0, to_row=None, read_rates=True):
+    """Returns a PosteriorOfPartitions object
     
     The format in the DPP output from MrBayes is 
     rep#\t#subsets\tsubset#\tsubset#\t....
@@ -335,6 +413,7 @@ def read_mb_partitions(sampled_partitions_file, from_row, to_row=None, read_rate
     n_sites = parse_mb_header(header)
     for line_num, line in enumerate(line_iter):
         if from_row and from_row > line_num:
+            _LOG.info("ignoring sample %d from '%s'\n" % (line_num, sampled_partitions_file.name))
             continue
         if to_row and to_row < line_num:
             break
@@ -349,7 +428,7 @@ def read_mb_partitions(sampled_partitions_file, from_row, to_row=None, read_rate
             partition.add_subset(Subset())
         rates = s[n_sites:]
         assert(len(assignments) == len(rates))
-        _LOG.info("reading sample %d\n" % line_num)
+        _LOG.info("reading sample %d from '%s'\n" % (line_num, sampled_partitions_file.name))
         for index, el in enumerate(assignments):
             iel = int(el)
             partition.subsets[iel - 1].add_index(index)
@@ -365,7 +444,7 @@ def read_mb_partitions(sampled_partitions_file, from_row, to_row=None, read_rate
 
 if __name__ == '__main__':
     from optparse import OptionParser
-    usage = "Usage: %prog [options] <PARTITIONS_FILEPATH>"
+    usage = "Usage: %prog [options] <PARTITIONS_FILEPATH1> [<PARTITIONS_FILEPATH2> <PARTITIONS_FILEPATH3> ...]"
     parser = OptionParser(usage = usage)
     parser.add_option("-s", "--seed", dest="seed", default=0, 
         type="int",
@@ -400,15 +479,21 @@ if __name__ == '__main__':
     if not args:
         sys.exit("Expecting a file name for the MrBayes DPP-over rates samples")
 
-    sampled_partitions_filename = args[0]
-    sampled_partitions_file = open(sampled_partitions_filename, 'rU')
-    sampled_partitions = read_mb_partitions(sampled_partitions_file, options.from_index, options.to_index)
-    sampled_partitions_file.close()            
+    sampled_partitions = PosteriorOfPartitions()
+    for file in args:
+        partitions_filename = file
+        try:
+            partitions_file = open(partitions_filename, 'rU')
+        except IOError as e:
+            sys.exit("Cannot open file '%s':\n%s\n" % (file, e))
+        partitions = read_partitions(partitions_file, options.from_index, options.to_index)
+        partitions_file.close()
+        sampled_partitions.merge(partitions)
 
     if options.debugging:
         mb_parts = sampled_partitions.get_mb_partitions()
         _LOG.debug("%s\n" % "\n".join(mb_parts))
-    _LOG.info("%d partitions read\n" % sampled_partitions.number_of_partitions)
+    _LOG.info("%d partitions read from %d files\n" % (sampled_partitions.number_of_partitions, len(args)))
 
     if options.target:
         test_partitions_filename = options.target
