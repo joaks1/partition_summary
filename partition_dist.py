@@ -60,7 +60,30 @@ class Subset(object):
         l.sort()
         s = " ".join([str(x+1) for x in l])
         return s
-        
+
+    def get_indices_abbrev_str(self):
+        l = [(i+1) for i in self.indices]
+        l.sort()
+        s = ""
+        for num, site_index in enumerate(l):
+            if num == (len(l) - 1):
+                s += "%d;\n" % site_index
+            elif (num == 0) and (site_index == (l[num+1] - 1)):
+                s += "%d-" % site_index
+            elif (num == 0) and (site_index < (l[num+1] - 1)):
+                s += "%d " % site_index
+            elif (num != 0) and (site_index == (l[num-1] + 1)) and (site_index == (l[num+1] - 1)):
+                continue
+            elif (num != 0) and (site_index == (l[num-1] + 1)) and (site_index < (l[num+1] - 1)):
+                s += "%d " % site_index
+            elif (num != 0) and (site_index > (l[num-1] + 1)) and (site_index < (l[num+1] - 1)):
+                s += "%d " % site_index
+            elif (num != 0) and (site_index > (l[num-1] + 1)) and (site_index == (l[num+1] - 1)):
+                s += "%d-" % site_index
+            else:
+                sys.exit("Unexpected problem converting Subset object '%s' into an abbreviated string.\nProblem occured at site index '%d'.\n" % (self.id, site_index))
+        return s
+            
     def _get_number_of_sites(self):
         return self._number_of_sites
     size = property(_get_number_of_sites)
@@ -109,12 +132,12 @@ class Partition(object):
         for i, subset in enumerate(self._subsets):
             if subset._get_id() is not None:
                 s = s + "\tcharset %s" % subset._get_id()
-                s = s + " [rate = %s] = %s;\n" % (str(subset.rate), subset.get_indices_str())
+                s = s + " [rate = %s] = %s;\n" % (str(subset.rate), subset.get_indices_abbrev_str())
                 paup_definition = paup_definition + " %s:%s," % (subset._get_id(), subset._get_id())
                 mb_definition = mb_definition + " %s," % subset._get_id()
             else:
                 s = s + "\tcharset subset%d" % (i+1)
-                s = s + " [rate = %s] = %s;\n" % (str(subset.rate), subset.get_indices_str())
+                s = s + " [rate = %s] = %s;\n" % (str(subset.rate), subset.get_indices_abbrev_str())
                 paup_definition = paup_definition + " subset%d:subset%d," % (i+1, i+1)
                 mb_definition = mb_definition + " subset%d," % (i+1)
         paup_definition = paup_definition.rstrip(',') + ";"
@@ -385,10 +408,14 @@ def read_nex_partition(nex_file):
     n1 = re.compile(r'^\d+$')
     n2 = re.compile(r'^\d+-\d+$')
     n3 = re.compile(r'^\d+-\d+\\3$')
+    comment_regex = r'\[[^\]]*\]'
+    comment_pattern = re.compile(comment_regex)
     line_iter = iter(nex_file)
     partition = Partition(id = nex_file.name)
     for line_num, line in enumerate(line_iter):
         x = line.strip()
+        x = comment_pattern.sub('', x)
+        x = x.strip()
         for name, indices in charset_pattern.findall(x):
             subset = Subset(set(), id = name.strip())
             site_indices = indices.strip().split()
