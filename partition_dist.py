@@ -67,7 +67,7 @@ class Subset(object):
         s = ""
         for num, site_index in enumerate(l):
             if num == (len(l) - 1):
-                s += "%d;\n" % site_index
+                s += "%d" % site_index
             elif (num == 0) and (site_index == (l[num+1] - 1)):
                 s += "%d-" % site_index
             elif (num == 0) and (site_index < (l[num+1] - 1)):
