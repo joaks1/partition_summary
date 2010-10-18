@@ -1,0 +1,11 @@
+Metadata-Version: 1.0
+Name: partitionpy
+Version: 0.1dev
+Summary: Python package for manipulating and summarizing posteriors of DNA alignment partitions produced by Bayesian Dirichlet process models of across-site rate heterogeneity
+Home-page: UNKNOWN
+Author: Jamie R. Oaks and Mark T. Holder
+Author-email: joaks1@gmail.com mand mtholder@ku.edu
+License: UNKNOWN
+Description: UNKNOWN
+Keywords: phylogenetics DPP evolution phylogeny genetics
+Platform: UNKNOWN
