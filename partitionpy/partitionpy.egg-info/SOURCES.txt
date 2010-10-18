@@ -1,0 +1,9 @@
+setup.cfg
+setup.py
+partitionpy/__init__.py
+partitionpy.egg-info/PKG-INFO
+partitionpy.egg-info/SOURCES.txt
+partitionpy.egg-info/dependency_links.txt
+partitionpy.egg-info/entry_points.txt
+partitionpy.egg-info/top_level.txt
+partitionpy.egg-info/zip-safe
