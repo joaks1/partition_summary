@@ -240,6 +240,33 @@ class Partition(object):
             permuted.subsets[site_to_subset_index].add_index(i)
         return permuted
     
+    def parse_partition_from_subset_index_list(self, indices):
+        assert self.length == 0, "\nThe Partition.parse_partition_from_subset_index_list method can only be performed on empty partitions.\n"
+        offset = min(indices)
+        if offset != 0:
+            for i in range(len(indices)):
+                indices[i] = indices[i] - offset
+        subsets = set(indices)
+        correct_subsets = set([i for i in range(len(subsets))])
+        diff = subsets.symmetric_difference(correct_subsets)
+        if len(diff) != 0:
+            correct_site_to_subset_indices(indices)
+        num_of_subsets = len(subsets)
+        for i in range(num_of_subsets):
+            self.add_subset(Subset())
+        for site_index, subset_index in enumerate(indices):
+            ss_index = int(subset_index)
+            self.subsets[ss_index].add_index(site_index)
+                
+    def mutated_copy(self):
+        mutated = Partition([])
+        subset_indices = self.get_site_to_subset_indices()
+        site_to_mutate = random.randint(0, (len(subset_indices)-1))
+        new_subset_index = random.randint(0, self.number_of_subsets)
+        subset_indices[site_to_mutate] = new_subset_index
+        mutated.parse_partition_from_subset_index_list(subset_indices)
+        return mutated
+            
     def valid(self):
         list_all_indices = []
         for subset in self.subsets:
@@ -549,6 +576,17 @@ def read_mb_partitions(sampled_partitions_file, from_row=0, to_row=None, read_ra
         posterior.add_partition(partition)
     return posterior
 
+def correct_site_to_subset_indices(indices):
+    subsets = set(indices)
+    correct_subsets = set([i for i in range(len(subsets))])
+    diff = correct_subsets.symmetric_difference(subsets)
+    diff_list = list(diff)
+    num_of_diffs = len(diff_list)/2
+    for i in range(num_of_diffs):
+        for j in range(len(indices)):
+            if indices[j] == diff_list[i + num_of_diffs]:
+                indices[j] = (indices[j] - (diff_list[i + num_of_diffs] - diff_list[i]))
+            
 
 if __name__ == '__main__':
     from optparse import OptionParser
