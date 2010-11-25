@@ -344,7 +344,7 @@ class PosteriorOfPartitions(object):
             lower_triangle.append(distances)
         return lower_triangle
     
-    def median_partition(self):
+    def median_sampled_partition(self):
         dist_mat = self.distance_matrix()
         dim = len(dist_mat)
         sum_dist = [0]*dim
@@ -360,6 +360,42 @@ class PosteriorOfPartitions(object):
                 median_part = self.partitions[n]
         return median_part, min_dist
     
+    def total_distance_from(self, partition):
+        dist = 0
+        for p in self.partitions:
+            dist += partition.distance(p)
+        return dist
+
+    def median_partition(self, starting_partition=Partition(), iterations_without_improvement=1000):
+        iteration = 0
+        if starting_partition.length == 0:
+            partition_index = random.randint(0, self.number_of_partitions)
+            partition = self.partitions[partition_index]
+            starting_partition = partition.permuted_copy()
+        current_dist = self.total_distance_from(starting_partition)
+        _LOG.info("Calculating median partition...\nInitial distance: %d\n" % current_dist)
+        finished = False
+        while not finished:
+            improvement = False
+            no_improvement_tally = 0
+            while not improvement:
+                no_improvement_tally += 1
+                new_partition = starting_partition.mutated_copy()
+                new_dist = self.total_distance_from(new_partition)
+                iteration += 1
+                if new_dist < current_dist:
+                    improvement = True
+                    starting_partition = new_partition
+                    current_dist = new_dist
+                    no_improvement_tally = 0
+                    _LOG.info("Iteration %d: %d\n" % (iteration, current_dist))
+                if no_improvement_tally > iterations_without_improvement:
+                    finished = True
+                    _LOG.info("No improvement for %d iterations... Done!\n" % no_improvement_tally)
+                    break
+        return starting_partition, current_dist
+                    
+
     def probability_closer_than_random(self, partition_object):
         global _SEED
         sampled_closer = 0
@@ -610,6 +646,9 @@ if __name__ == '__main__':
     parser.add_option("-m", "--median", dest="median", default=False, 
         action="store_true",
         help="Find the sampled partition that has the smallest distance to all of the others (the sample that is closest to being the median)")
+    parser.add_option("--true_median", dest="true_median", default=False, 
+        action="store_true",
+        help="Find the partition that has the smallest distance to all of the others")
     parser.add_option("--target", dest="target",
         action="store",
         type="string",
@@ -657,7 +696,10 @@ if __name__ == '__main__':
         sampled_partitions.probability_closer_than_random(tp)
         
     if options.median:
-        med, md = sampled_partitions.median_partition()
+        med, md = sampled_partitions.median_sampled_partition()
         sys.stdout.write("\n%s\n[total distance = %d]\n" % (str(med), md))
-                             
+    if options.true_median:
+        true_med, dist = sampled_partitions.median_partition()
+        sys.stdout.write("\n%s\n[total distance = %d]\n" % (str(true_med), dist))
+        
                         
