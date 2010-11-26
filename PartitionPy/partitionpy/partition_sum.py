@@ -258,10 +258,11 @@ class Partition(object):
             ss_index = int(subset_index)
             self.subsets[ss_index].add_index(site_index)
                 
-    def mutated_copy(self):
+    def mutated_copy(self, site_to_mutate=None):
         mutated = Partition([])
         subset_indices = self.get_site_to_subset_indices()
-        site_to_mutate = random.randint(0, (len(subset_indices)-1))
+        if site_to_mutate is not None:
+            site_to_mutate = random.randint(0, (len(subset_indices)-1))
         new_subset_index = random.randint(0, self.number_of_subsets)
         subset_indices[site_to_mutate] = new_subset_index
         mutated.parse_partition_from_subset_index_list(subset_indices)
@@ -366,7 +367,7 @@ class PosteriorOfPartitions(object):
             dist += partition.distance(p)
         return dist
 
-    def median_partition(self, starting_partition=Partition(), iterations_without_improvement=1000):
+    def median_partition(self, starting_partition=Partition(), iterations_without_improvement=100):
         iteration = 0
         if starting_partition.length == 0:
             partition_index = random.randint(0, self.number_of_partitions)
@@ -375,24 +376,23 @@ class PosteriorOfPartitions(object):
         current_dist = self.total_distance_from(starting_partition)
         _LOG.info("Calculating median partition...\nInitial distance: %d\n" % current_dist)
         finished = False
+        no_improvement_tally = 0
         while not finished:
-            improvement = False
-            no_improvement_tally = 0
-            while not improvement:
-                no_improvement_tally += 1
-                new_partition = starting_partition.mutated_copy()
+            no_improvement_tally += 1
+            iteration += 1
+            for site_index in range(starting_partition.length):
+                new_partition = starting_partition.mutated_copy(site_index)
                 new_dist = self.total_distance_from(new_partition)
-                iteration += 1
                 if new_dist < current_dist:
-                    improvement = True
                     starting_partition = new_partition
                     current_dist = new_dist
                     no_improvement_tally = 0
-                    _LOG.info("Iteration %d: %d\n" % (iteration, current_dist))
-                if no_improvement_tally > iterations_without_improvement:
-                    finished = True
-                    _LOG.info("No improvement for %d iterations... Done!\n" % no_improvement_tally)
-                    break
+                else:
+                    pass
+            _LOG.info("Iteration %d: %d\n" % (iteration, current_dist))
+            if (no_improvement_tally > iterations_without_improvement):
+                _LOG.info("No improvement for %d iterations... Done!\n" % no_improvement_tally)
+                finished = True
         return starting_partition, current_dist
                     
 

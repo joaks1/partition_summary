@@ -1,0 +1,4 @@
+- speed up calculation of median partition
+- speed up calculation of median sampled partition
+- add method to calculate the per-site mean rates across a posterior of partitions
+- add method to calculate the per-subset mean rates across a posterior of partitions
