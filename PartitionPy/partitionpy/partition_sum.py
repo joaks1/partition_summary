@@ -394,7 +394,6 @@ class PosteriorOfPartitions(object):
                 _LOG.info("No improvement for %d iterations... Done!\n" % no_improvement_tally)
                 finished = True
         return starting_partition, current_dist
-                    
 
     def probability_closer_than_random(self, partition_object):
         global _SEED
@@ -628,7 +627,7 @@ if __name__ == '__main__':
     from optparse import OptionParser
     usage = "Usage: %prog [options] <PARTITIONS_FILEPATH1> [<PARTITIONS_FILEPATH2> <PARTITIONS_FILEPATH3> ...]"
     parser = OptionParser(usage = usage)
-    parser.add_option("-s", "--seed", dest="seed", default=0, 
+    parser.add_option("-s", "--seed", dest="seed", 
         type="int",
         help="The random number generator seed")
     parser.add_option("-v", "--verbose", dest="verbose", default=False, 
@@ -659,7 +658,7 @@ if __name__ == '__main__':
         _LOG.setLevel(logging.INFO)
     if options.debugging:
         _LOG.setLevel(logging.DEBUG)
-    if options.seed != 0:
+    if options.seed:
         _SEED = options.seed
     _RNG.seed(_SEED)
     if not args:
@@ -701,5 +700,3 @@ if __name__ == '__main__':
     if options.true_median:
         true_med, dist = sampled_partitions.median_partition()
         sys.stdout.write("\n%s\n[total distance = %d]\n" % (str(true_med), dist))
-        
-                        
